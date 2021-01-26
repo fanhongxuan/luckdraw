@@ -468,7 +468,7 @@ void MyFrame::DrawCandidateList(wxGraphicsContext &dc, wxDC &display, std::vecto
 	if (iCount <= 0){
 		if (NULL != mpActivityBitmap && NULL != mpWork && (!mpWork->IsStart())){
 			wxMemoryDC mem(*mpActivityBitmap);
-			int height = size.GetHeight() * 0.4, width = size.GetWidth() * 0.7;
+			int height = size.GetHeight() * (dHeight - dTitleHeight), width = size.GetWidth() * dWidth;
 			double ratio = (double)mpActivityBitmap->GetWidth()/(double)mpActivityBitmap->GetHeight();
 			if ((height * ratio) > width){
 				height = width * (double)mpActivityBitmap->GetWidth()/(double)mpActivityBitmap->GetHeight();
@@ -476,7 +476,7 @@ void MyFrame::DrawCandidateList(wxGraphicsContext &dc, wxDC &display, std::vecto
 			else{
 				width = height * ratio;
 			}
-			display.StretchBlit(size.GetWidth() * 0.5 - width/2, size.GetHeight() * 0.31, width, height, &mem, 
+			display.StretchBlit(size.GetWidth() * 0.5 - width/2, size.GetHeight() * 0.3, width, height, &mem, 
 		                         0, 0, mpActivityBitmap->GetWidth(), mpActivityBitmap->GetHeight());
 		}
 		return;
