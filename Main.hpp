@@ -64,14 +64,16 @@ public:
 	void OnThreadEvent(wxCommandEvent &evt);
 
 	MyThread *GetThread(){return mpWork;}
-	void SetCurActivity(MyActivity *pActivity, int iCurCount);
+	void SetCurActivity(MyActivity *pActivity);
 	void ShowResult(const wxString &strTitle, std::vector<MyCandidate *> &candidateList);
 	int GetCount(){ return mCount;}
 	void GetCandidateList(std::vector<MyCandidate *> &candidateList);
 private:
 	void LoadMedia();
 	void DrawTitle(wxDC &dc, const wxString &strTitle);
-	void DrawCandidateList(wxGraphicsContext &dc, wxDC &display, std::vector<MyCandidate *> &candidates, const wxString &strTitle);
+    void DrawContent(wxGraphicsContext &dc, wxDC &display, std::vector<MyCandidate *> &candidates, const wxString &strTitle);
+	void DrawCandidateList(wxGraphicsContext &dc, wxDC &display, std::vector<MyCandidate *> &candidates, wxSize titleSize);
+    void DrawMultiCandidateList(wxGraphicsContext &dc, wxDC &display, std::vector<MyCandidate *> &candidates, wxSize titleSize);
 	void DrawButton(wxGraphicsContext &dc, const wxString &strLabel);
 	wxString GetCandidateByIndex(std::vector<MyCandidate *> &candidates, int iIndex);
 	void DoShow();
@@ -88,7 +90,8 @@ private:
 	wxRect mButtonRect;
 	bool mbMouseOnButton;
 	wxBitmap *mpBackground;
-	wxBitmap *mpActivityBitmap;
+	std::vector<wxBitmap *> mActivityBitmap;
+    std::vector<wxString> mActivityNames;
 
 	MyActivity *mpCurActivity;
 

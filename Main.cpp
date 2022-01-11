@@ -83,7 +83,7 @@ MyFrame::MyFrame(const wxString& title, const wxPoint& pos, const wxSize& size, 
 	mpCandidateDialog = NULL;
 	mpResultDialog = NULL;
 	mpCurActivity = NULL;
-	mpActivityBitmap = NULL;
+	// mActivityBitmap.clear();
     // set the frame icon
     SetIcon(wxICON(sample));
     EnableFullScreenView();
@@ -103,10 +103,15 @@ MyFrame::~MyFrame()
 		delete mpBackground;
 		mpBackground = NULL;
 	}
-	if (NULL != mpActivityBitmap){
-		delete mpActivityBitmap;
-		mpActivityBitmap = NULL;
-	}
+    for (int i = 0; i < mActivityBitmap.size(); i++){
+        wxBitmap *pBitmap = mActivityBitmap[i];
+        if (NULL != pBitmap){
+            delete pBitmap;
+            pBitmap = NULL;
+        }
+    }
+    mActivityBitmap.clear();
+    mActivityNames.clear();
 }
 
 void MyFrame::OnClose(wxCloseEvent &evt)
@@ -155,7 +160,7 @@ void MyFrame::LoadMedia()
 	}
 }
 
-void MyFrame::SetCurActivity(MyActivity *pActivity, int iCurCount)
+void MyFrame::SetCurActivity(MyActivity *pActivity)
 {
 	if (NULL == pActivity){
 		return;
@@ -168,15 +173,30 @@ void MyFrame::SetCurActivity(MyActivity *pActivity, int iCurCount)
 		mpCurActivity = NULL;
 	}
 	mpCurActivity = pActivity;
-	mCount = iCurCount;
-	if (NULL != mpActivityBitmap){
-		delete mpActivityBitmap;
-		mpActivityBitmap = NULL;
-	}
+    for (int i = 0; i < mActivityBitmap.size(); i++){
+        wxBitmap *pBitmap = mActivityBitmap[i];
+        if (NULL != pBitmap){
+            delete pBitmap;
+            pBitmap = NULL;
+        }
+    }
+    mActivityBitmap.clear();
+    mActivityNames.clear();
 	if (!mpCurActivity->mBitmap.IsEmpty()){
 		wxImage img(mpCurActivity->mBitmap);
-		mpActivityBitmap = new wxBitmap(img);
+		mActivityBitmap.push_back(new wxBitmap(img));
+        mActivityNames.push_back(wxString::Format("%s(%d)",mpCurActivity->mDesc, mpCurActivity->mCount));
 	}
+    if (!mpCurActivity->mSubAct.empty()){
+        for (int i = 0; i < mpCurActivity->mSubAct.size(); i++){
+            MyActivity *pActivity = mpCurActivity->mSubAct[i];
+            if (NULL != pActivity && (!pActivity->mBitmap.IsEmpty())){
+                wxImage img(pActivity->mBitmap);
+                mActivityBitmap.push_back(new wxBitmap(img));
+                mActivityNames.push_back(wxString::Format("%s(%d)", pActivity->mDesc, pActivity->mCount));
+            }
+        }
+    }
 	Prepare();
 	Refresh();
 }
@@ -219,8 +239,16 @@ void MyFrame::Prepare()
 {
 	// update the candidate count, title, and clear the preview candidateList
 	int iCandidateCount = mpCandidateDialog->GetCandidateCount(mpCurActivity->mPool, mpConfigDialog->IsIncludeAll(mpCurActivity->mName, mpCurActivity->mDesc));
-	int iLeftNumber = mpConfigDialog->GetLeftNumber(mpCurActivity->mName, mpCurActivity->mDesc);
-	mCandidateListTitle = wxString::Format("%s %s (%d/%d)共%d人", mpCurActivity->mName, mpCurActivity->mDesc, mCount, iLeftNumber, iCandidateCount);
+	int iLeftNumber = 0;
+    if (mpCurActivity->mSubAct.empty()){
+        iLeftNumber = mpConfigDialog->GetLeftNumber(mpCurActivity->mName, mpCurActivity->mDesc);
+    }
+    else{
+        for (int i = 0; i < mpCurActivity->mSubAct.size(); i++){
+            iLeftNumber += mpConfigDialog->GetLeftNumber(mpCurActivity->mSubAct[i]->mName, mpCurActivity->mSubAct[i]->mDesc);
+        }
+    }
+	mCandidateListTitle = wxString::Format("%s %s (%d/%d)共%d人", mpCurActivity->mName, mpCurActivity->mDesc, mpCurActivity->mCount, iLeftNumber, iCandidateCount);
 	// clear the result.
 	if (!mCandidateList.empty()){
 		for (int i = 0; i < mCandidateList.size(); i++){
@@ -252,8 +280,14 @@ void MyFrame::DoStart()
 	if (NULL == mpCurActivity){
 		return;
 	}
-	// update the real count
-	mCount = mpConfigDialog->GetActivityCount(mpCurActivity);
+
+	int iLeftCount = mpConfigDialog->GetLeftCount(mpCurActivity);
+    if (iLeftCount > mpCurActivity->mCount){
+        mCount = mpCurActivity->mCount;
+    }
+    else{
+        mCount = iLeftCount;
+    }
 	if (mCount <= 0){
 		wxMessageBox("该奖项已抽完");
 		return;
@@ -264,6 +298,24 @@ void MyFrame::DoStart()
 	mPercent = 100;
 	Refresh();
 }
+
+// 几个问题：
+// 1, 支持同一个奖项，不同的物品输入， 奖品描述，改成： A奖品：3，B奖品：4；
+//   需要注意的是，如果这样设置了之后，需要检查设置的总数量和这边的数量要一致，或者以这个数量为准？
+
+// 2, 显示，抽奖过程中，要可以显示每个人当前中的是什么？
+//    情况比较复杂：
+//    a)一次抽奖，只有一个物品的，比较简单，和现在保持一致即可。
+//    b)一次抽奖，由多个物品组成。拆分成多个奖项。 每个物品中间，留一个特定的位置来显示具体的物品。
+//    c)一次抽奖，如果一个物品对应的数量很少，就显示在同一行。
+//    
+// 3, 分批抽奖之后，还需要更新剩余的数量：
+
+// 4, 保存结果： 比较简单
+
+// 另外一个思路：
+// 一次支持同时抽多个奖？ 
+// 
 
 void MyFrame::DoStop()
 {
@@ -276,8 +328,10 @@ void MyFrame::DoStop()
 	}
 	mPercent = mpConfigDialog->GetDefaultStep(mpCurActivity);
 
+    // todo:fanhongxuan@gmail.com
+    // 如果是多个子项目，把candidateList分配到不同的子项目中去。
 	if (mpConfigDialog->UpdateActivity(mpCurActivity, mCandidateList)){
-		mpResultDialog->AddResults(mpCurActivity, mCandidateList);
+        mpResultDialog->AddResults(mpCurActivity, mCandidateList);
 	}
 	Refresh();
 	// todo:fanhongxuan@gmail.com
@@ -326,6 +380,7 @@ void MyFrame::OnThreadEvent(wxCommandEvent &evt)
 			mCandidateList.clear();
 		}
 		mCandidateList = pPayload->mCandidateList;
+        // 如果有子项目，分配到子项目中去
 		evt.SetClientData(NULL);
 		delete pPayload;
 		Refresh();
@@ -433,7 +488,7 @@ wxString MyFrame::GetCandidateByIndex(std::vector<MyCandidate *> &candidates, in
 	return ret;
 }
 
-void MyFrame::DrawCandidateList(wxGraphicsContext &dc, wxDC &display, std::vector<MyCandidate *> &candidates, const wxString &strTitle){
+void MyFrame::DrawContent(wxGraphicsContext &dc, wxDC &display, std::vector<MyCandidate *> &candidates, const wxString &strTitle){
 	// draw the total candidates
 	// 8/10
 	wxSize size = GetSize();
@@ -466,21 +521,148 @@ void MyFrame::DrawCandidateList(wxGraphicsContext &dc, wxDC &display, std::vecto
 	// draw the canidate list.
 	int iCount = candidates.size();
 	if (iCount <= 0){
-		if (NULL != mpActivityBitmap && NULL != mpWork && (!mpWork->IsStart())){
-			wxMemoryDC mem(*mpActivityBitmap);
-			int height = size.GetHeight() * (dHeight - dTitleHeight), width = size.GetWidth() * dWidth;
-			double ratio = (double)mpActivityBitmap->GetWidth()/(double)mpActivityBitmap->GetHeight();
-			if ((height * ratio) > width){
-				height = width * (double)mpActivityBitmap->GetWidth()/(double)mpActivityBitmap->GetHeight();
-			}
-			else{
-				width = height * ratio;
-			}
-			display.StretchBlit(size.GetWidth() * 0.5 - width/2, size.GetHeight() * 0.3, width, height, &mem, 
-		                         0, 0, mpActivityBitmap->GetWidth(), mpActivityBitmap->GetHeight());
+		if (!mActivityBitmap.empty() && NULL != mpWork && (!mpWork->IsStart())){
+            wxSize curSize = size;
+            curSize.SetWidth(curSize.GetWidth()/mActivityBitmap.size());
+            int titleHeight = 0;
+            if (mActivityNames.size() > 1){
+                titleHeight = 80;
+                if (titleHeight > curSize.GetHeight()){
+                    titleHeight = curSize.GetHeight() * 0.5;
+                }
+                curSize.SetHeight(curSize.GetHeight() - titleHeight);
+            }
+            
+            for (int i = 0; i < mActivityBitmap.size(); i++){
+                wxBitmap *pBitmap = mActivityBitmap[i];
+                wxMemoryDC mem(*pBitmap);
+                int height = curSize.GetHeight() * (dHeight - dTitleHeight), width = curSize.GetWidth() * dWidth;
+                double ratio = (double)pBitmap->GetWidth()/(double)pBitmap->GetHeight();
+                if ((height * ratio) > width){
+                    height = width * (double)pBitmap->GetWidth()/(double)pBitmap->GetHeight();
+                }
+                else{
+                    width = height * ratio;
+                }
+                if (titleHeight != 0){
+                    wxFont font;
+                    font.SetPixelSize(wxSize(0, titleHeight * 0.5));
+                    font.MakeBold();
+                    display.SetFont(font);
+                    display.SetTextForeground(*wxBLACK);
+                    display.DrawText(mActivityNames[i], curSize.GetWidth() * 0.5 - width/2 + i * curSize.GetWidth(),
+                        curSize.GetHeight() * 0.3 + titleHeight * 0.3);
+                }
+                display.StretchBlit(
+                    curSize.GetWidth() * 0.5 - width/2 + i * curSize.GetWidth(), // xdes
+                    curSize.GetHeight() * 0.3 + titleHeight, // ydest
+                    width,
+                    height,
+                    &mem, 
+                    0,
+                    0,
+                    pBitmap->GetWidth(), 
+                    pBitmap->GetHeight());
+            }
 		}
-		return;
 	}
+    else{
+        if (NULL != mpCurActivity && mpCurActivity->mSubAct.size() > 1){
+            DrawMultiCandidateList(dc, display, candidates, titleSize);
+        }
+        else{
+            DrawCandidateList(dc, display, candidates, titleSize);
+        }
+    }
+}
+
+void MyFrame::DrawMultiCandidateList(wxGraphicsContext &dc, wxDC &display, std::vector<MyCandidate *> &candidates, wxSize titleSize){
+    wxSize size = GetSize();
+    int iCount = candidates.size();
+    wxColour textColour = *wxBLACK;
+    int iColumn = 0, iRow = 0;
+    bool bDescAsColumnLabel = true;
+    iColumn = mpCurActivity->mSubAct.size();
+    for (int i = 0; i < mpCurActivity->mSubAct.size(); i++){
+        if (iRow < mpCurActivity->mSubAct[i]->mCount){
+            iRow = mpCurActivity->mSubAct[i]->mCount;
+        }
+    }
+    // make sure the row is less than 4;
+    if (iColumn > 4){
+        int temp = iColumn; iColumn = iRow; iRow = iColumn;
+        bDescAsColumnLabel = false;
+        iColumn++;// desc is the first col
+    }
+    else{
+        iRow++; // desc is the first row
+    }
+
+    int startX = 0, startY = 0, xStep = 0, yStep = 0;
+	int iIndex = 0;
+	startX = size.GetWidth() * 0.15;
+	startY = size.GetHeight() * 0.3;
+	yStep = size.GetHeight() * 0.4 / (iRow);
+	xStep = size.GetWidth() * 0.7 / (iColumn);
+
+    double fontRatio = 0.5;
+    if (iColumn >= 5){
+        fontRatio = 0.3;
+    }
+	wxFont candidateFont;
+	if (yStep > titleSize.GetHeight()){
+		candidateFont.SetPixelSize(wxSize(0, titleSize.GetHeight() * fontRatio));
+	}
+	else{
+		candidateFont.SetPixelSize(wxSize(0, yStep * fontRatio));
+	}
+	candidateFont.MakeBold();
+	dc.SetFont(dc.CreateFont(candidateFont, textColour));
+
+    if (bDescAsColumnLabel){
+        int iOffset = 0;
+        for (int i = 0; i < mpCurActivity->mSubAct.size(); i++){
+            wxString text = mpCurActivity->mSubAct[i]->mDesc;
+			double textWidth = 0;
+			dc.GetTextExtent(text, &textWidth, NULL);
+			if (text.Length() > 0){
+				dc.DrawText(text, (startX + xStep * i) + (xStep - textWidth)/2, startY);
+			}
+            for (int j = 0; j < mpCurActivity->mSubAct[i]->mCount; j++){
+                text = GetCandidateByIndex(candidates, iOffset++);
+                textWidth = .0;
+                dc.GetTextExtent(text, &textWidth, NULL);
+                if (text.Length() > 0){
+                    dc.DrawText(text, (startX + xStep * i) + (xStep - textWidth)/2, startY + yStep * (j+1));
+                }
+            }
+        }
+    }
+    else{
+        int iOffset = 0;
+        for (int i = 0; i < mpCurActivity->mSubAct.size(); i++){
+            wxString text = mpCurActivity->mSubAct[i]->mDesc;
+            double textWidth = .0;
+            dc.GetTextExtent(text, &textWidth, NULL);
+            if (text.Length() > 0){
+                dc.DrawText(text, (startX) + (xStep - textWidth)/2, startY + yStep * i);
+            }
+            for (int j = 0; j < mpCurActivity->mSubAct[i]->mCount; j++){
+                text = GetCandidateByIndex(candidates, iOffset++);
+                textWidth = .0;
+                dc.GetTextExtent(text, &textWidth, NULL);
+                if (text.Length() > 0){
+                    dc.DrawText(text, (startX + xStep * (j + 1)) + (xStep - textWidth)/2, startY + yStep * i);
+                }
+            }
+        }
+    }
+}
+
+void MyFrame::DrawCandidateList(wxGraphicsContext &dc, wxDC &display, std::vector<MyCandidate *> &candidates, wxSize titleSize){
+    wxSize size = GetSize();
+    int iCount = candidates.size();
+    wxColour textColour = *wxBLACK;
 	// max has 13 row, 4 column
 	if (iCount > (13*4)){
 		// too much
@@ -590,7 +772,7 @@ void MyFrame::OnPaint(wxPaintEvent &evt)
 	DrawTitle(dc, mTitle);
 	wxGraphicsContext *pCtx = wxGraphicsContext::Create(dc);
 	if (NULL != pCtx){
-		DrawCandidateList(*pCtx, dc,mCandidateList, mCandidateListTitle);
+        DrawContent(*pCtx, dc,mCandidateList, mCandidateListTitle);
 		DrawButton(*pCtx, mButtonLabel);
 		delete pCtx;
 	}

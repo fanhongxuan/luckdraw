@@ -66,7 +66,7 @@ MyConfigDialog::MyConfigDialog(MyFrame *pFrame)
 	SetSize(900,300);
 
 	mCurrentLine = -1;
-	mActiveAct = -1;
+	mActiveAct.clear();
 	LoadFromFile("./media/activitylist.txt");
 }
 
@@ -106,7 +106,7 @@ void MyConfigDialog::UpdateRow(int iIndex)
 		else{
 			mpGrid->SetReadOnly(iIndex, i, false);
 		}
-		if (iIndex == mActiveAct){
+        if (mActiveAct.find(iIndex) != mActiveAct.end()){
 			mpGrid->SetCellTextColour(iIndex, i, *wxRED);
 			mpGrid->SetCellBackgroundColour(iIndex, i, *wxGREEN);
 		}
@@ -277,37 +277,34 @@ int MyConfigDialog::GetDefaultStep(MyActivity *pAct)
 	if (NULL == pAct){
 		return ret;
 	}
-	for (int i = 0; i < mpGrid->GetNumberRows(); i++){
-		if (mpGrid->GetCellValue(i, NAME_COL) == pAct->mName && mpGrid->GetCellValue(i, TARGET_COL) == pAct->mDesc){
-			if (mpGrid->GetCellValue(i, ENABLE_STEP_COL) != "1"){
-				ret = 100;
-				break;
-			}
-		}
-	}
+    std::string desc = pAct->mDesc;
+    // 如果一次选中多个选项，则默认使用第一个选中的奖项的，是否分布显示。
+    if (pAct->mSubAct.size() > 1){
+        desc = pAct->mSubAct[0]->mDesc;
+    }
+    for (int i = 0; i < mpGrid->GetNumberRows(); i++){
+        if (mpGrid->GetCellValue(i, NAME_COL) == pAct->mName && mpGrid->GetCellValue(i, TARGET_COL) == desc){
+            if (mpGrid->GetCellValue(i, ENABLE_STEP_COL) != "1"){
+                ret = 100;
+                break;
+            }
+        }
+    }
 	return ret;
 }
 
-int MyConfigDialog::GetActivityCount(MyActivity *pAct)
+int MyConfigDialog::GetLeftCount(MyActivity *pAct)
 {
-	int ret = 0;
-	if (NULL == pAct){
-		return ret;
-	}
-	for (int i = 0; i < mpGrid->GetNumberRows(); i++){
-		if (mpGrid->GetCellValue(i, NAME_COL) == pAct->mName && mpGrid->GetCellValue(i, TARGET_COL) == pAct->mDesc){
-			long iCount = 0, iTotalCount = 0, iUsed = 0;
-			mpGrid->GetCellValue(i, TARGET_MAX_COL).ToLong(&iTotalCount);
-			mpGrid->GetCellValue(i, TARGET_UNIT_COL).ToLong(&iCount);
-			mpGrid->GetCellValue(i, TARGET_CUR_COL).ToLong(&iUsed);
-			if ((iTotalCount - iUsed) < iCount){
-				iCount = iTotalCount - iUsed;
-			}
-			ret = iCount;
-			break;
-		}
-	}
-	return ret;
+    int iLeftNumber = 0;
+    if (pAct->mSubAct.empty()){
+        iLeftNumber = GetLeftNumber(pAct->mName, pAct->mDesc);
+    }
+    else{
+        for (int i = 0; i < pAct->mSubAct.size(); i++){
+            iLeftNumber += GetLeftNumber(pAct->mSubAct[i]->mName, pAct->mSubAct[i]->mDesc);
+        }
+    }
+    return iLeftNumber;
 }
 
 void MyConfigDialog::OnSelect(wxCommandEvent &evt)
@@ -317,39 +314,115 @@ void MyConfigDialog::OnSelect(wxCommandEvent &evt)
 		wxMessageBox("请先结束当前抽奖");
 		return;
 	}
+    /*
 	int iIndex = GetCurrentLine();
 	if (iIndex < 0){
 		return;
 	}
-	// mpGrid->SetCellValue(iIndex, STATUS_COL, "正在抽奖");
-	// Update mpFrame according current selected item.
-	long iCount = 0, iTotalCount = 0, iUsed = 0;
-	mpGrid->GetCellValue(iIndex, TARGET_MAX_COL).ToLong(&iTotalCount);
-	mpGrid->GetCellValue(iIndex, TARGET_UNIT_COL).ToLong(&iCount);
-	mpGrid->GetCellValue(iIndex, TARGET_CUR_COL).ToLong(&iUsed);
-	if ((iTotalCount - iUsed) < iCount){
-		iCount = iTotalCount - iUsed;
-	}
-	if (iCount == 0){
-		wxMessageBox("该奖项已抽完");
-		return;
-	}
-	MyActivity *pAct = new MyActivity;
-	pAct->mName = mpGrid->GetCellValue(iIndex, NAME_COL);
-	pAct->mDesc = mpGrid->GetCellValue(iIndex, TARGET_COL);
-	pAct->mPool = mpGrid->GetCellValue(iIndex, ACTIVITY_POOL_COL);
-	pAct->mBitmap = mpGrid->GetCellValue(iIndex, TARGET_DESC_COL);
-	//pAct->mTotalNumber = iTotalCount;
-	//pAct->mLeftNumber = iTotalCount - iUsed;
-	mpFrame->SetCurActivity(pAct, iCount);
-	if (mActiveAct >= 0 && mActiveAct <= mpGrid->GetNumberRows()){
-		for (int i = 0; i < mpGrid->GetNumberCols(); i++){
-			mpGrid->SetCellTextColour(mActiveAct, i, *wxBLACK);
-			mpGrid->SetCellBackgroundColour(mActiveAct, i, *wxWHITE);
-		}
-	}
-	mActiveAct = iIndex;
-	UpdateRow(iIndex);
+    */
+
+    // 支持一次选中多个奖项
+    // 必须名称,包含所有，分布显示结果，奖池，这几项内容完全一样，才可以同时选择。
+    wxArrayInt selected = mpGrid->GetSelectedRows();
+    if (selected.size() == 0){
+        wxMessageBox("请选择要使用的奖项");
+        return;
+    }
+    std::string activitySummary = "";
+    int iSelectedCount = 0;
+    for (int i = 0; i < selected.size(); i++){
+        int iIndex = selected.Item(i);
+        std::string summary = mpGrid->GetCellValue(iIndex, NAME_COL);
+        summary += mpGrid->GetCellValue(iIndex, INCLUDE_ALL_COL);
+        summary += mpGrid->GetCellValue(iIndex, ENABLE_STEP_COL);
+        summary += mpGrid->GetCellValue(iIndex, STATUS_COL);
+        summary += mpGrid->GetCellValue(iIndex, ACTIVITY_POOL_COL);
+        // mpGrid->SetCellValue(iIndex, STATUS_COL, "正在抽奖");
+        // Update mpFrame according current selected item.
+        long iCount = 0, iTotalCount = 0, iUsed = 0;
+        mpGrid->GetCellValue(iIndex, TARGET_MAX_COL).ToLong(&iTotalCount);
+        mpGrid->GetCellValue(iIndex, TARGET_UNIT_COL).ToLong(&iCount);
+        mpGrid->GetCellValue(iIndex, TARGET_CUR_COL).ToLong(&iUsed);
+        if ((iTotalCount - iUsed) < iCount){
+            iCount = iTotalCount - iUsed;
+        }
+        if (iCount == 0){
+            wxMessageBox("该奖项已抽完");
+            return;
+        }
+        iSelectedCount += iCount;
+        if (iSelectedCount > 50){
+            wxMessageBox("一次对多可以抽50个人");
+            return;
+        }
+        if (selected.size() > 4){
+            if (iCount > 4){
+                wxMessageBox("一次抽奖数量多于4个的时候，每个奖项不能超过4人");
+                return;
+            }
+        }
+
+        if (activitySummary.empty()){
+            activitySummary = summary;
+        }
+        else if (activitySummary != summary){
+            wxMessageBox("不同种类的奖项不能同时抽");
+            return;
+        }
+    }
+
+    std::set<int>::iterator it = mActiveAct.begin();
+    while(it != mActiveAct.end()){
+        int index = (*it);
+        if (index >= 0 && index <= mpGrid->GetNumberRows()){
+            for (int i = 0; i < mpGrid->GetNumberCols(); i++){
+                mpGrid->SetCellTextColour(index, i, *wxBLACK);
+                mpGrid->SetCellBackgroundColour(index, i, *wxWHITE);
+            }
+        }
+        it++;
+    }
+    mActiveAct.clear();
+    std::vector<MyActivity *> acts;
+    for (int i = 0; i < selected.size(); i++){
+        int iIndex = selected.Item(i);
+        long iCount = 0, iTotalCount = 0, iUsed = 0;
+        mpGrid->GetCellValue(iIndex, TARGET_MAX_COL).ToLong(&iTotalCount);
+        mpGrid->GetCellValue(iIndex, TARGET_UNIT_COL).ToLong(&iCount);
+        mpGrid->GetCellValue(iIndex, TARGET_CUR_COL).ToLong(&iUsed);
+        if ((iTotalCount - iUsed) < iCount){
+            iCount = iTotalCount - iUsed;
+        }
+        MyActivity *pAct = new MyActivity;
+        pAct->mName = mpGrid->GetCellValue(iIndex, NAME_COL);
+        pAct->mDesc = mpGrid->GetCellValue(iIndex, TARGET_COL);   
+        pAct->mPool = mpGrid->GetCellValue(iIndex, ACTIVITY_POOL_COL);
+        pAct->mBitmap = mpGrid->GetCellValue(iIndex, TARGET_DESC_COL);
+        pAct->mCount = iCount;
+        acts.push_back(pAct);
+        //pAct->mTotalNumber = iTotalCount;
+        //pAct->mLeftNumber = iTotalCount - iUsed;
+        // mpFrame->SetCurActivity(pAct, iCount);
+        mActiveAct.insert(iIndex);
+        UpdateRow(iIndex);
+    }
+    MyActivity *pCurAct = NULL;
+    if (acts.size() == 1){
+        pCurAct = acts[0];
+    }
+    else{
+        pCurAct = new MyActivity;
+        pCurAct->mName = acts[0]->mName;
+        int iCount = 0;
+        for (int i = 0; i < acts.size(); i++){
+            pCurAct->mSubAct.push_back(acts[i]);
+            iCount += acts[i]->mCount;
+        }
+        pCurAct->mCount = iCount;
+    }
+    if (NULL != pCurAct){
+        mpFrame->SetCurActivity(pCurAct);
+    }
 	mpGrid->Refresh();
 }
 
@@ -359,9 +432,6 @@ void MyConfigDialog::OnDelete(wxCommandEvent &evt)
 	if (iCur < 0){
 		return;
 	}
-	if (mActiveAct == iCur){
-		mActiveAct = -1;
-	}
 	wxString text = mpGrid->GetCellValue(iCur, TARGET_CUR_COL);
 	long iLong = 0;
 	text.ToLong(&iLong);
@@ -369,12 +439,12 @@ void MyConfigDialog::OnDelete(wxCommandEvent &evt)
 		wxMessageBox("该奖项已抽取，无法删除，请先做弃奖操作或者清空抽奖记录");
 		return;
 	}
+    mActiveAct.erase(iCur);
 	mpGrid->DeleteRows(iCur, 1);
 }
 
 void MyConfigDialog::OnDeleteAll(wxCommandEvent &evt)
 {
-	mActiveAct = -1;
 	for (int i = 0; i < mpGrid->GetNumberRows(); i++){
 		wxString text = mpGrid->GetCellValue(i, TARGET_CUR_COL);
 		long iLong = 0;
@@ -388,6 +458,7 @@ void MyConfigDialog::OnDeleteAll(wxCommandEvent &evt)
 	if (answer != wxYES){
 		return;
 	}
+    mActiveAct.clear();
 	mpGrid->DeleteRows(0, mpGrid->GetNumberRows());
 }
 
@@ -425,6 +496,12 @@ bool MyConfigDialog::UpdateActivity(MyActivity *pActivity, std::vector<MyCandida
 	if (NULL == pActivity){
 		return false;
 	}
+    if (pActivity->mSubAct.size() > 1){
+        for (int i = 0 ; i < pActivity->mSubAct.size(); i++){
+            UpdateActivity(pActivity->mSubAct[i]->mName, pActivity->mSubAct[i]->mDesc, pActivity->mSubAct[i]->mCount);
+        }
+        return true;
+    }
 	long iCount = 0;
 	for (int j = 0; j < candidates.size(); j++){
 		if (candidates[j] != NULL){

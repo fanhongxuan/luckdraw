@@ -288,9 +288,23 @@ void MyResultDialog::OnShowGroup(wxCommandEvent &evt)
 
 void MyResultDialog::AddResults(MyActivity *pAct, std::vector<MyCandidate *> &resultList)
 {
+    
 	if (resultList.empty() || NULL == pAct){
 		return;
 	}
+    // todo:fanhongxuan@gmail.com
+    // 如果有多个子奖项，依次添加多个。
+    if (pAct->mSubAct.size() > 1){
+        int iOffset = 0;
+        for (int i = 0; i < pAct->mSubAct.size(); i++){
+            std::vector<MyCandidate *> result;
+            for (int j = 0; j < pAct->mSubAct[i]->mCount; j++){
+                result.push_back(resultList[iOffset++]);
+            }
+            AddResults(pAct->mSubAct[i],result);
+        }
+        return;
+    }
 	// todo:fanhongxuan@gmail.com
 	// find the right position to add the new result
 	int iIndex = mpGrid->GetNumberRows();
