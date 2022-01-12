@@ -590,7 +590,7 @@ void MyFrame::DrawMultiCandidateList(wxGraphicsContext &dc, wxDC &display, std::
     }
     // make sure the row is less than 4;
     if (iColumn > 4){
-        int temp = iColumn; iColumn = iRow; iRow = iColumn;
+        int temp = iColumn; iColumn = iRow; iRow = temp;
         bDescAsColumnLabel = false;
         iColumn++;// desc is the first col
     }
@@ -608,6 +608,9 @@ void MyFrame::DrawMultiCandidateList(wxGraphicsContext &dc, wxDC &display, std::
     double fontRatio = 0.5;
     if (iColumn >= 5){
         fontRatio = 0.3;
+    }
+    else if (iColumn >= 4){
+        fontRatio = 0.4;
     }
 	wxFont candidateFont;
 	if (yStep > titleSize.GetHeight()){
